@@ -1,0 +1,41 @@
+{
+  "description": "摩天叠楼师 —— 堆叠建造类微信小游戏",
+  "projectname": "skyline-stacker",
+  "appid": "touristappid",
+  "compileType": "game",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "minified": true,
+    "urlCheck": false,
+    "postcss": false,
+    "nodeModules": false,
+    "autoAudits": false,
+    "coverView": false,
+    "checkInvalidKey": true,
+    "checkSiteMap": false,
+    "uploadWithSourceMap": true,
+    "compileHotReLoad": false,
+    "ignoreUploadUnusedFiles": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
+  },
+  "packOptions": {
+    "ignore": [
+      { "type": "folder", "value": "tests" },
+      { "type": "folder", "value": "docs" },
+      { "type": "folder", "value": "dev" },
+      { "type": "folder", "value": "node_modules" },
+      { "type": "folder", "value": ".workbuddy" },
+      { "type": "file", "value": "CONTEXT.md" },
+      { "type": "file", "value": "README.md" },
+      { "type": "file", "value": "overview.md" },
+      { "type": "file", "value": "package.json" },
+      { "type": "file", "value": ".DS_Store" }
+    ]
+  },
+  "condition": {}
+}

@@ -1,0 +1,15 @@
+# 依赖（本工程零依赖，但本地预览壳将来可能需要）
+node_modules/
+
+# 微信开发者工具的本地私有配置。
+# 该文件自身写明「本地开发配置，不应纳入版本管理」——每台机器的设置不同。
+project.private.config.json
+
+# WorkBuddy 的工作目录：会话数据与本地笔记。
+# 属于工具状态而非工程源码；项目约定请见 CONTEXT.md 与 docs/。
+.workbuddy/
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+*.log
