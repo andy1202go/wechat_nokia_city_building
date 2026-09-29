@@ -130,6 +130,10 @@ function drawLevel(ctx, box, run, cfg, pal) {
     color: pal.hud.dim
   });
 
+  // 深色衬底：白天主题的天空很亮，纯白轨道会糊在里面看不见
+  draw.fillRoundRect(ctx, box.x - 2, box.y - 2, box.w + 4, box.h + 4,
+    (box.h + 4) / 2, pal.hud.bg, null);
+
   // 轨道
   draw.fillRoundRect(ctx, box.x, box.y, box.w, box.h, box.h / 2, pal.hud.track, null);
 
@@ -176,7 +180,8 @@ function drawCombo(ctx, spot, run, presenter, pal) {
   ctx.translate(-spot.x, -(spot.y + h / 2));
 
   const boxX = spot.x - w / 2;
-  draw.fillRoundRect(ctx, boxX, spot.y, w, h, h / 2, 'rgba(12, 26, 44, 0.62)', null);
+  // 加一道金边：连击是正反馈，值得比普通信息更「亮」一点
+  draw.fillRoundRect(ctx, boxX, spot.y, w, h, h / 2, 'rgba(12, 26, 44, 0.72)', pal.hud.accent, 1.2);
   draw.text(ctx, label, spot.x, spot.y + 17, {
     size: 13,
     weight: 500,

@@ -70,6 +70,24 @@ module.exports = function register(t) {
     t.gt(problems.length, 0, '地基宽度小于楼层宽度必须被拦下');
   });
 
+  t.test('抓出：失误容差越过一层的坍塌阈值（判定档位会倒挂）', () => {
+    // 只放大楼层宽度、地基不动 —— 这是最容易踩到的一种改法：
+    // FLOOR 与 FOUNDATION 在 config 里隔了好几节，看不出两者是绑在一起的。
+    const problems = problemsWith({ FLOOR: { width: 88 } });
+    t.gt(problems.length, 0, '楼层宽度超过地基的判定尺度时必须被拦下');
+    t.assert(
+      problems.join(' ').indexOf('FOUNDATION.width') >= 0,
+      '提示信息应点明「要同步放大 FOUNDATION.width」'
+    );
+
+    // 同比例放大之后应当重新自洽
+    t.eq(
+      problemsWith({ FLOOR: { width: 88 }, FOUNDATION: { width: 176 } }).length,
+      0,
+      '楼层与地基同比例放大后不应报错'
+    );
+  });
+
   t.test('抓出：振幅小于两层坍塌阈值（局面会变成必死）', () => {
     // 注意：collapseRatio 上限为 1，两层阈值最大也只有约 61，小于默认振幅 118，
     // 所以必须连同振幅一起调小才能触发这条检查。
@@ -97,6 +115,13 @@ module.exports = function register(t) {
     const twoFloorThreshold =
       (cfg.FOUNDATION.width / 2) * cfg.STABILITY.collapseRatio * (1 / (1 + cfg.STABILITY.topHeavyGain));
     t.gt(cfg.CRANE.amplitude, twoFloorThreshold, '振幅足够够到濒临坍塌的塔顶');
+
+    const oneFloorThreshold = (cfg.FOUNDATION.width / 2) * cfg.STABILITY.collapseRatio;
+    t.lt(
+      cfg.FLOOR.width * cfg.TOLERANCE.missRatio,
+      oneFloorThreshold,
+      '失误容差小于一层的坍塌阈值（否则「一般落点」会直接导致坍塌、而失误反而不塌）'
+    );
   });
 
   t.test('config 里每个参数都真的被代码用到（防止出现「改了没反应」的死配置）', () => {

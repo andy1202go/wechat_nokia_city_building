@@ -12,6 +12,11 @@
  *
  * 另外记录 save/restore 的配对深度：render() 中途 return 而漏掉 restore，
  * 会让后续所有绘制整体偏移，属于典型的「改一处、坏一片」。
+ *
+ * 还记录每次绘制时**坐标系是否已被旋转**。有些元素属于世界、不属于被旋转的对象
+ * —— 地基就是典型：它曾经被画在塔的旋转坐标系里，于是塔一歪它就跟着翘，
+ * 看起来像跷跷板。这件事在调用参数上完全看不出来（rotate 作用在变换矩阵上，
+ * 不改变 fillRect 的入参），只能在桩这一层跟住。
  */
 
 /** 从 ctx.font 里解析字号，形如 "500 22px sans-serif"。 */
@@ -37,6 +42,9 @@ function createStubCanvas(options) {
   const problems = [];
   const styleLog = [];
   let stackDepth = 0;
+  // 当前坐标系是否被旋转过，以及 save/restore 时它该怎么恢复
+  let rotated = false;
+  const rotationStack = [];
 
   const state = {
     fillStyle: '#000000',
@@ -60,7 +68,7 @@ function createStubCanvas(options) {
         note(`${name}() 的第 ${i + 1} 个参数不是有限数：${value}`);
       }
     }
-    log.push({ name, args: list.slice() });
+    log.push({ name, args: list.slice(), rotated, fillStyle: state.fillStyle });
   }
 
   const ctx = {
@@ -119,11 +127,13 @@ function createStubCanvas(options) {
     // ---- 栈 ----
     save: function () {
       stackDepth += 1;
+      rotationStack.push(rotated);
       record('save', []);
     },
     restore: function () {
       if (stackDepth === 0) note('restore() 在没有对应 save() 的情况下被调用');
       else stackDepth -= 1;
+      rotated = rotationStack.length ? rotationStack.pop() : false;
       record('restore', []);
     },
 
@@ -150,6 +160,11 @@ function createStubCanvas(options) {
     arcTo: function (x1, y1, x2, y2, r) {
       if (typeof r === 'number' && r < 0) note(`arcTo() 半径为负：${r}`);
       record('arcTo', [x1, y1, x2, y2, r]);
+    },
+    ellipse: function (x, y, rx, ry, rotation, startAngle, endAngle) {
+      if (typeof rx === 'number' && rx < 0) note(`ellipse() 横向半径为负：${rx}`);
+      if (typeof ry === 'number' && ry < 0) note(`ellipse() 纵向半径为负：${ry}`);
+      record('ellipse', [x, y, rx, ry, rotation, startAngle, endAngle]);
     },
     bezierCurveTo: function (a, b, c, d, e, f) {
       record('bezierCurveTo', [a, b, c, d, e, f]);
@@ -195,15 +210,21 @@ function createStubCanvas(options) {
       record('translate', [x, y]);
     },
     rotate: function (angle) {
+      // 任何非零旋转都让后续元素「跟着倾斜」，记住它。
+      // 角度恰好为 0 不算 —— 那等价于没转，不该让断言假失败。
+      if (angle !== 0) rotated = true;
       record('rotate', [angle]);
     },
     scale: function (x, y) {
       record('scale', [x, y]);
     },
     setTransform: function (a, b, c, d, e, f) {
+      // 只有矩阵里带斜切/旋转分量（b、c）才算坐标系被转过
+      rotated = (b !== 0 || c !== 0);
       record('setTransform', [a, b, c, d, e, f]);
     },
     resetTransform: function () {
+      rotated = false;
       record('resetTransform', []);
     },
 
@@ -265,6 +286,22 @@ function createStubCanvas(options) {
       }
       return out;
     },
+    /**
+     * 本帧的调用序列（每条含 name / args / rotated / fillStyle），可按条件筛选。
+     *
+     * 用来断言「某些元素不该跟着被旋转的对象一起转」—— 例如地基不该跟着塔翘。
+     * 这类不变式在入参上看不出来（rotate 改的是变换矩阵，fillRect 的参数不变），
+     * 只能靠这里记录的 rotated 标记来判断。
+     */
+    calls: function (filter) {
+      const f = filter || {};
+      return log.filter(function (entry) {
+        if (f.name && entry.name !== f.name) return false;
+        if (f.fillStyle && entry.fillStyle !== f.fillStyle) return false;
+        if (f.rotated !== undefined && entry.rotated !== f.rotated) return false;
+        return true;
+      });
+    },
     /** 本帧用过的全部颜色（fillStyle / strokeStyle 的赋值序列） */
     colorsUsed: function () {
       return styleLog.slice();
@@ -278,6 +315,8 @@ function createStubCanvas(options) {
       problems.length = 0;
       styleLog.length = 0;
       stackDepth = 0;
+      rotated = false;
+      rotationStack.length = 0;
     }
   };
 }

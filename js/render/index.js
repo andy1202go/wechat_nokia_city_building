@@ -16,7 +16,7 @@ function render(ctx, run, vp, presenter, scene, cfg, ui, pal) {
   const colors = pal || defaultPalette;
 
   ctx.clearRect(0, 0, vp.width, vp.height);
-  sceneMod.drawSky(ctx, vp, colors);
+  sceneMod.drawSky(ctx, vp, scene, cfg, colors);
 
   const shake = presenterMod.shakeOffset(presenter, cfg);
   ctx.save();

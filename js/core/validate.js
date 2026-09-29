@@ -43,6 +43,28 @@ function validateConfig(cfg = DEFAULT) {
   if (cfg.FOUNDATION.width < cfg.FLOOR.width) {
     problems.push('FOUNDATION.width 不应小于 FLOOR.width，否则第一层楼层都会超出地基');
   }
+
+  // 失误容差必须落在一层的坍塌阈值之内。
+  //
+  // 为什么这条必须存在：run.js 有一条不变式 —— 失误的楼层**不进塔**（因此不改变重心），
+  // 而「一般落点」会进塔。一旦失误容差超过一层的坍塌阈值，这两档就会倒挂：
+  //   偏差 43 -> 判「一般落点」-> 进塔 -> 偏心 43 > 阈值 40.3 -> 塔倒
+  //   偏差 45 -> 判「失误」   -> 翻落 -> 塔完好，只扣一次失误额度
+  // 也就是「投得更歪反而更安全」，三档判定的语义碎掉。
+  //
+  // 推论：FLOOR.width 与 FOUNDATION.width 必须同进同退 —— 前者决定容差，
+  // 后者决定判定尺度。这层关系很隐晦（两个参数在 config 里隔了好几节），
+  // 所以在这里显式钉住，而不是指望后来的人记得。
+  const missTol = cfg.FLOOR.width * T.missRatio;
+  const thresholdAtOne = (cfg.FOUNDATION.width / 2) * S.collapseRatio;
+  if (missTol >= thresholdAtOne) {
+    problems.push(
+      `失误容差 (${missTol.toFixed(1)} = FLOOR.width ${cfg.FLOOR.width} × missRatio ${T.missRatio}) ` +
+        `必须小于一层的坍塌阈值 (${thresholdAtOne.toFixed(1)} = FOUNDATION.width ${cfg.FOUNDATION.width} / 2 × collapseRatio ${S.collapseRatio})，` +
+        '否则「一般落点」会直接导致坍塌、而更歪的失误反而不塌。' +
+        '放大 FLOOR.width 时必须同步放大 FOUNDATION.width'
+    );
+  }
   if (S.collapseRatio <= 0 || S.collapseRatio > 1) {
     problems.push('STABILITY.collapseRatio 应落在 (0, 1] 内');
   }

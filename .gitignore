@@ -9,6 +9,10 @@ project.private.config.json
 # 属于工具状态而非工程源码；项目约定请见 CONTEXT.md 与 docs/。
 .workbuddy/
 
+# 出图工具（dev/render-frame.js）的迭代输出目录。
+# 每轮调视觉都会重出几十张，属于工作产物；定稿的对比图另存 dev/screenshots/。
+dev/shots/
+
 # 系统与编辑器
 .DS_Store
 Thumbs.db

@@ -784,8 +784,52 @@ module.exports = function register(t) {
       if (towerView.isFloorVisible(stage.vp, i, cfg)) visible += 1;
     }
 
-    t.gt(visible, 5, `摄像机跟随塔顶后应有相当数量的楼层可见，实际只有 ${visible} 层`);
-    t.lt(visible, 30, `地面附近的低层此时应在屏幕外，实际可见 ${visible} 层`);
+    // 两条意图分开表达，都不写死层数 —— 可见层数是「屏幕装得下几层」的结果，
+    // 会随 FLOOR.height 变（22 高时 15 层，正方形的 64 高时 5 层）。
+    //   1. 设计意图：一次至少看到 4 层，塔的形状才读得出来（原版一次也就看到 4~6 块）
+    //   2. 几何结果：屏幕装不下的层必须被剔掉，所以可见层数必然少于「屏幕高度 / 层高」
+    const layersPerScreen = stage.vp.height / (cfg.FLOOR.height * stage.vp.scale);
+
+    t.assert(
+      visible >= 4,
+      `摄像机跟随塔顶后至少应看到 4 层，实际只有 ${visible} 层`
+    );
+    t.lt(
+      visible,
+      layersPerScreen,
+      `屏幕只装得下 ${layersPerScreen.toFixed(1)} 层，地面附近的低层此时应被剔掉，实际可见 ${visible} 层`
+    );
+  });
+
+  t.test('地基不跟着塔一起转（曾经它被画在旋转坐标系里，看起来像跷跷板）', () => {
+    const cfg = core.config;
+    const run = core.run.createRun(cfg);
+    const stage = makeStage({ cfg: cfg, run: run });
+
+    // 故意堆一座持续偏向同一侧的塔：必须有非零倾角，这条用例才有意义
+    const offsets = [0, 12, 10, 14, 11, 13];
+    for (let i = 0; i < offsets.length; i += 1) {
+      core.run.landAt(run, core.tower.topCenterX(run.tower) + offsets[i]);
+    }
+
+    stage.stub.reset();
+    draw(stage);
+
+    // 先证明前提：这座塔确实转了。rotate(0) 不会让坐标系进入旋转态，所以若不先
+    // 确认「真的转了」，下面的断言就可能是空转通过 ——
+    // 「没有跟着转」和「根本没转」是两件完全不同的事。
+    const turned = stage.stub.calls({ name: 'rotate' }).filter((c) => c.args[0] !== 0);
+    t.gt(turned.length, 0, '这座塔应当明显偏向一侧、倾角非零，否则这条用例是空转');
+
+    // 再断言地基：它是地面的一部分，不属于被旋转的塔
+    const foundation = stage.stub.calls({ name: 'fillRect', fillStyle: palette.foundation.body });
+    t.gt(foundation.length, 0, '地基应当被画出来（它是「塔能在多宽的范围内站住」的视觉提示）');
+    for (let i = 0; i < foundation.length; i += 1) {
+      t.assert(
+        !foundation[i].rotated,
+        '地基不能画在旋转坐标系里 —— 那样它会跟着塔一起翘：一端扎进地面、一端翘到草地上'
+      );
+    }
   });
 
   t.test('高塔的可见楼层确实被逐个绘制出来', () => {
@@ -804,16 +848,29 @@ module.exports = function register(t) {
     draw(stage);
     assertClean(stage.stub, '高塔逐层绘制');
 
+    // 先钉住前提：下面两条都是「每层至少 N 次调用」形态的下界，
+    // visible 为 0 时会退化成 0 >= 0 的空转。
+    t.gt(visible, 0, '摄像机跟随塔顶后至少应有一层可见，否则后面两条下界断言是空转');
+
     // 每层楼至少一个圆角矩形 = 4 次 arcTo，还要加上地基、吊车与 HUD
     t.gt(
       stage.stub.countOf('arcTo'),
       visible * 4,
       `可见 ${visible} 层，arcTo 调用应超过 ${visible * 4} 次`
     );
-    // 每层 8 个窗格，全部走 fillRect
+    // 窗格：按**填充色**精确计数，而不是数「fillRect 一共几次」。
+    // 数总数是个测不出东西的下界 —— 画面里城市、HUD、地基、吊车、楼层明暗带都在
+    // fillRect，窗格就算一个都不画，总数也早就越过了「可见层数 × 每层窗格数」这条线。
+    // （实测过：把 WIN_COLS 从 3 改成 6，阈值与实际值一起变大，断言照样通过。）
+    // 窗格只会用 window / windowLit 这两个颜色，所以这个计数是准的。
+    const windowsPerFloor = towerView.WIN_COLS * towerView.WIN_ROWS;
+    const windowsDrawn =
+      stage.stub.calls({ name: 'fillRect', fillStyle: palette.window }).length +
+      stage.stub.calls({ name: 'fillRect', fillStyle: palette.windowLit }).length;
     t.assert(
-      stage.stub.countOf('fillRect') >= visible * 8,
-      `可见 ${visible} 层应画出至少 ${visible * 8} 个窗格，实际 fillRect 仅 ${stage.stub.countOf('fillRect')} 次`
+      windowsDrawn >= visible * windowsPerFloor,
+      `可见 ${visible} 层、每层 ${windowsPerFloor} 个窗格，应画出至少 ${visible * windowsPerFloor} 个，` +
+        `实际只画了 ${windowsDrawn} 个（按填充色计数）`
     );
     // 彩色楼房：连续可见的楼层应当出现多种配色
     const colors = stage.stub.colorsUsed();

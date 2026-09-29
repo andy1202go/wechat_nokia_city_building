@@ -3,6 +3,7 @@
 一款致敬诺基亚时代内置游戏《都市摩天楼》（Digital Chocolate《Tower Bloxx》/《City Bloxx》）的**微信小游戏**。吊车在塔顶上方摆动，掐准时机松手，把楼层一层层叠上去——偏一点就歪，歪多了就倒。
 
 - **只做快速模式**：一次局面建一座塔，直到坍塌或封顶
+- **三套视觉主题**：晴日 / 黄昏 / 夜晚，改一行即可切换。天空是有内容的舞台——天体带光晕、程序生成的云、随高度淡出的星辰，城市分三层并带万家灯火
 - **零外部素材**：美术全部用 Canvas 图元绘制，音效全部用 Web Audio 程序合成。没有一张图片、没有一个音频文件，因此没有素材版权风险，包体也几乎为零
 - **内核零 `wx` 依赖**：全部游戏规则在 `js/core/` 里，纯 Node 可测。`node tests/run-tests.js` 直接跑，不需要 `npm install`
 
@@ -41,6 +42,44 @@ node dev/serve.js          # 默认 8777 端口，可用 node dev/serve.js 9000 
 
 > 壳的路径引用与依赖图由 `tests/dev-server.test.js` 守住——这类问题一旦出现是**静默白屏**（`<script>` 加载失败既不触发 `window.onerror` 也不抛异常），搭壳时就真的踩到过一次。
 
+### 不开界面直接出图（视觉迭代用）
+
+改完画面想立刻看效果，不必打开任何界面。出图工具依赖 `@napi-rs/canvas`（**工程本身仍是零依赖**，这只是工具链的依赖），装一次即可：
+
+```bash
+npm install @napi-rs/canvas --prefix ~/.cache/canvas-tools
+NODE_PATH=~/.cache/canvas-tools/node_modules node dev/render-frame.js --theme all
+```
+
+> `NODE_PATH` 要指向装了 `@napi-rs/canvas` 的那个 `node_modules`。若它已在 Node 的默认解析路径下，前缀可以省掉。
+
+产物落在 `dev/shots/`（该目录已 gitignore，属于工作产物）。参数：
+
+| 参数 | 作用 |
+|---|---|
+| `--theme day\|dusk\|night\|all` | 出哪个主题，默认 `all` 出齐三套 |
+| `--only idle,tower,lean` | 只出指定场景 |
+| `--size 375x812` | 改画布尺寸，用来验窄屏/宽屏适配 |
+| `--out dev/shots` | 改输出目录 |
+
+9 个预设场景：`idle`（待机引导）、`tower`（堆到中途）、`lean`（塔身倾斜）、`combo`（高连击）、`ground`（低塔 + 偏心，**唯一能看见地面与地基的场景**）、`end-topped`（封顶结算）、`end-falling`（**倒塌进行到一半**，这一帧关掉了结算面板才看得见塔身）、`end-collapsed`（坍塌倒稳）、`pause`（暂停面板）。
+
+改配色或塔身形态时，另外两个脚本会把「设计空间」画出来：
+
+```bash
+node dev/compare-palette.js --theme day    # 五版配色对照（同一座塔，只换 building 色板）
+node dev/compare-floor.js                  # 楼层尺寸对照（一屏能看见几层）
+node dev/probe-pixels.js dev/shots/day-ground.png --col 187   # 像素探针：扫一列看颜色分界
+```
+
+`compare-palette.js` 的五版**全部由当前主题的色板按规则推导**（三档明度 / 两档 / 单色 / 三档+强调色），所以换主题也能跑；唯独「改前 · 六色相循环」是写死的，留作反面教材。
+
+`probe-pixels.js` 是判断颜色与几何关系的唯一可靠手段。**在缩略图上凭肉眼判断颜色会出错** —— 曾据此误判 HUD 卡片是白色，差点推翻一套其实正确的配色（实测 `38,41,79`）。
+
+**它跑的是 `js/` 下同一份渲染代码**，没有第二套绘制逻辑，所以图上看到什么、真机上就是什么。这条链路的价值在于**确定性**：不依赖手速、不依赖随机种子漂移，可以反复重出同一帧做 A/B 对比。
+
+> 本机浏览器二进制无法启动，`dev/serve.js` 那条路走不通时，出图是唯一能看见画面的方式。用法上的一个坑：原生 Canvas **不读 fontconfig**，中文字体必须在脚本里用 `GlobalFonts.registerFromPath(..., 'sans-serif')` 显式注册，注册成工程硬编码的 `sans-serif` 别名即可，**工程代码不用为出图工具让步**。
+
 ### 跑测试
 
 ```bash
@@ -49,7 +88,7 @@ node tests/run-tests.js
 
 零依赖、不需要 `npm install`。退出码 0 表示全部通过。
 
-当前 **139 个用例**，覆盖：
+当前 **141 个用例**，覆盖：
 
 | 套件 | 覆盖内容 |
 |---|---|
@@ -87,11 +126,13 @@ node tests/run-tests.js
 │   │   └── index.js           统一出口
 │   │
 │   ├── render/                【渲染】只读内核状态，绝不改它
-│   │   ├── palette.js         全部配色
+│   │   ├── themes.js          三套视觉主题：晴日 / 黄昏 / 夜晚
+│   │   ├── palette.js         配色入口（只导出「当前用哪套」）
 │   │   ├── viewport.js        世界坐标 ↔ 屏幕坐标、摄像机
 │   │   ├── draw.js            绘制工具（圆角矩形、文字、渐变、虚线）
 │   │   ├── presenter.js       表现层动画状态（压扁、闪烁、抖动、渐入）
-│   │   ├── scene.js           天空、地平线、远景城市剪影
+│   │   ├── scene.js           天空总装、三层城市剪影、大气透视、窗灯
+│   │   ├── sky.js             天空元素（天体与光晕、云、星辰）
 │   │   ├── towerView.js       塔与楼层、地基中线
 │   │   ├── craneView.js       吊车、吊绳、下落中的楼层
 │   │   ├── hud.js             高度/人口/机会/连击 + 重心水准泡
@@ -107,12 +148,18 @@ node tests/run-tests.js
 │   ├── harness.js             极简测试框架
 │   └── *.test.js              各套件
 │
-├── dev/                       本地预览壳（不进小游戏包）
+├── dev/                       本地预览壳与开发工具（不进小游戏包）
 │   ├── serve.js               零依赖静态服务器 + 动态生成源码清单
 │   ├── manifest.js            清单扫描逻辑（serve 与测试共用同一份）
 │   ├── index.html             预览页：机身、状态面板、错误浮层
 │   ├── wx-shim.js             wx.* → 浏览器标准 API
-│   └── loader.js              浏览器里的极简 CommonJS 运行时
+│   ├── loader.js              浏览器里的极简 CommonJS 运行时
+│   ├── render-frame.js        无界面出图：驱动同一份渲染代码产出 PNG
+│   ├── compare-palette.js     配色对照：五版色板画在同一座塔上
+│   ├── compare-floor.js       楼层尺寸对照：一屏能看见几层
+│   ├── probe-pixels.js        像素探针：扫一行/一列，把颜色分界打出来
+│   ├── shots/                 出图输出（工作产物，已 gitignore）
+│   └── screenshots/           定稿的主题对比图
 │
 ├── docs/
 │   ├── adr/                   架构决策记录
@@ -144,6 +191,14 @@ game    只做编排与输入分发，不含游戏规则、也不含绘制细节
 
 一条铁律：`TOLERANCE.missRatio` 必须等于 `0.5`，它等价于"落点中心越过下层支承边缘"的物理临界点。要放宽容错请改 `FOUNDATION.width`。
 
+### 视觉不在这里调
+
+配色、天空、城市、三套主题全在 `js/render/themes.js`，**刻意不进 `config.js`** —— config 是内核的文件，而内核不知道 Canvas 存在（见 `docs/adr/0006`）。换主题只改该文件里的 `DEFAULT_THEME`（当前为 `dusk`），或在调用处用 `themes.themeByName('day')` 显式指定。
+
+调整观感请走「改 `themes.js` → 跑 `node dev/render-frame.js --theme all` → 看图」这条回路，不要靠肉眼看缩略图判断颜色（有过一次误判，实际采样与肉眼结论相反）。
+
+**塔身配色是有限制的**：同一色相、只分三档明度，中档取明度的中点、顺序排成 中 → 浅 → 深，且最亮一档不能亮过地平线附近的天空。原因与另外两档被否决的方案见 `docs/adr/0008`——这是「低幼感」的主战场：**低幼来自「多」，艺术感来自「少」**。塔身的形态参数（圆角、窗格、侧墙厚度）与之同等重要，都在 `towerView.js` 顶部。
+
 ---
 
 ## 文档索引
@@ -156,6 +211,9 @@ game    只做编排与输入分发，不含游戏规则、也不含绘制细节
 | `docs/adr/0003` | 用重心偏心而非累积偏移和做坍塌判据 |
 | `docs/adr/0004` | 终局为什么拆成「封顶」与「坍塌」两个互斥事件 |
 | `docs/adr/0005` | 坍塌的倒塌演出为什么只放在表现层、不改内核倾角 |
+| `docs/adr/0006` | 视觉主题为什么集中在 `themes.js` 而不进 config；天空的分层与天体位置的约束 |
+| `docs/adr/0007` | 楼层为什么是正方形、地基为什么必须画在塔的变换之外 |
+| `docs/adr/0008` | 塔身配色为什么只分三档明度；形态「去积木化」改了什么；光晕衰减为什么必须按峰值 alpha 的比例 |
 | `docs/参数调优手册.md` | 逐参数说明、配方、成对修改清单 |
 
 ---
